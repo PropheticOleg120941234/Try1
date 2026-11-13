@@ -22,7 +22,7 @@ const char* fragmentShaderSource = R"(
 )";
 
 EngineViewport::EngineViewport(QWidget* parent) : QOpenGLWidget(parent) {
-    timer.start(); // Запускаем высокоточный таймер
+    //timer.start(); // Запускаем высокоточный таймер
 }
 
 EngineViewport::~EngineViewport() {
@@ -78,6 +78,14 @@ void EngineViewport::initializeGL() {
     glEnableVertexAttribArray(0);
 
     timer.restart();
+
+    frameTimer = new QTimer(this);
+    // Связываем сигнал таймера с нашим игровым циклом gameLoop
+    connect(frameTimer, &QTimer::timeout, this, &EngineViewport::gameLoop);
+
+    // Заставляем таймер срабатывать как можно чаще (0 мс означает "вызывать при любой свободной итерации")
+    // Это дает максимальный FPS, но управление временем теперь полностью наше
+    frameTimer->start(0);
 }
 
 void EngineViewport::resizeGL(int w, int h) {
@@ -85,34 +93,7 @@ void EngineViewport::resizeGL(int w, int h) {
 }
 
 void EngineViewport::paintGL() {
-    // 1. Получаем чистые миллисекунды от таймера
-    double rawFrameTime = timer.restart() / 1000.0;
-
-    // Защита от слишком больших скачков (например, если свернули окно)
-    if (rawFrameTime > 0.25) {
-        rawFrameTime = FIXED_DT;
-    }
-
-    // 2. ФИЛЬТР СГЛАЖИВАНИЯ (Экспоненциальное скользящее среднее)
-    // Мы берем 90% времени от прошлого кадра и только 10% от нового текущего.
-    // Это сглаживает случайные микро-задержки операционной системы.
-    static double smoothedFrameTime = FIXED_DT;
-    smoothedFrameTime = smoothedFrameTime * 0.9 + rawFrameTime * 0.1;
-
-    accumulator += smoothedFrameTime;
-
-    // 3. Фиксированный шаг для физики glDrawArrays
-    while (accumulator >= FIXED_DT) {
-        prevAngle = currentAngle;
-        updatePhysics(FIXED_DT);
-        accumulator -= FIXED_DT;
-    }
-
-    // 4. Отрисовка с правильным коэффициентом сглаживания
-    //double alpha = accumulator / FIXED_DT;
     renderScene(accumulator / FIXED_DT);
-
-    update(); // Запрашиваем перерисовку
 }
 
 void EngineViewport::updatePhysics(double dt) {
@@ -147,4 +128,22 @@ void EngineViewport::renderScene(double alpha) {
     // Рисуем геометрию
     glBindVertexArray(VAO);
     glDrawArrays(GL_TRIANGLES, 0, 36);
+}
+
+void EngineViewport::gameLoop() {
+    // 1. Считаем чистую разницу времени
+    double rawFrameTime = timer.restart() / 1000.0;
+    if (rawFrameTime > 0.25) rawFrameTime = FIXED_DT;
+
+    accumulator += rawFrameTime;
+
+    // 2. Стабильный шаг физики
+    while (accumulator >= FIXED_DT) {
+        prevAngle = currentAngle;
+        updatePhysics(FIXED_DT);
+        accumulator -= FIXED_DT;
+    }
+
+    // 3. Принудительно заставляем Qt вызвать paintGL прямо сейчас, без откладывания в долгий ящик
+    update();
 }
