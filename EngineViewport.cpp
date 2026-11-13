@@ -22,7 +22,9 @@ const char* fragmentShaderSource = R"(
 )";
 
 EngineViewport::EngineViewport(QWidget* parent) : QOpenGLWidget(parent) {
-    //timer.start(); // Запускаем высокоточный таймер
+    setFocusPolicy(Qt::StrongFocus); // Разрешаем виджету принимать фокус клавиатуры
+    setMouseTracking(true);          // Ловим движения мыши, даже если кнопки не зажаты
+    timer.start();
 }
 
 EngineViewport::~EngineViewport() {
@@ -98,34 +100,66 @@ void EngineViewport::paintGL() {
 
 void EngineViewport::updatePhysics(double dt) {
     // Вращаем треугольник со скоростью 90 градусов в секунду строго в физическом тике
-    currentAngle += 90.0f * static_cast<float>(dt);
-    if (currentAngle >= 360.0f) {
-        currentAngle -= 360.0f;
-    }
+    currentAngle += rotationSpeed * static_cast<float>(dt);
+
+    // СЧИТАЕМ НАПРАВЛЕНИЕ ВЗГЛЯДА КАМЕРЫ (Математика из Категории 1)
+    // Переводим углы Эйлера в трехмерный вектор направления (Front)
+    QVector3D front;
+    front.setX(cos(qDegreesToRadians(cameraYaw)) * cos(qDegreesToRadians(cameraPitch)));
+    front.setY(sin(qDegreesToRadians(cameraPitch)));
+    front.setZ(sin(qDegreesToRadians(cameraYaw)) * cos(qDegreesToRadians(cameraPitch)));
+    front.normalize();
+
+    float cameraSpeed = 2.5f * static_cast<float>(dt); // Скорость полета
+
+    // Движение вперед-назад
+    if (keys[Qt::Key_W]) cameraPos += front * cameraSpeed;
+    if (keys[Qt::Key_S]) cameraPos -= front * cameraSpeed;
+
+    // Движение влево-вправо (используем векторное произведение с вектором "Верх" для шага вбок)
+    QVector3D right = QVector3D::crossProduct(front, QVector3D(0.0f, 1.0f, 0.0f)).normalized();
+    if (keys[Qt::Key_A]) cameraPos -= right * cameraSpeed;
+    if (keys[Qt::Key_D]) cameraPos += right * cameraSpeed;
 }
 
 void EngineViewport::renderScene(double alpha) {
-    // Очищаем экран
     glClearColor(0.15f, 0.15f, 0.18f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // Плавный угол рендера с учетом интерполяции
     float renderAngle = prevAngle * (1.0f - alpha) + currentAngle * alpha;
 
-    QMatrix4x4 transform;
-    transform.setToIdentity();
+    // 1. МАТРИЦА МОДЕЛИ: Куб просто стоит в центре мира (0,0,0) и крутится
+    QMatrix4x4 model;
+    model.setToIdentity();
+    model.rotate(renderAngle, 0.5f, 1.0f, 0.0f);
 
+    // 2. МАТРИЦА ВИДА (НАША КАМЕРА): Рассчитываем взгляд (Категория 1)
+    QMatrix4x4 view;
+    view.setToIdentity();
+
+    // Пересчитываем вектор взгляда для текущего кадра рендера
+    QVector3D front;
+    front.setX(cos(qDegreesToRadians(cameraYaw)) * cos(qDegreesToRadians(cameraPitch)));
+    front.setY(sin(qDegreesToRadians(cameraPitch)));
+    front.setZ(sin(qDegreesToRadians(cameraYaw)) * cos(qDegreesToRadians(cameraPitch)));
+    front.normalize();
+
+    // Полезный метод Qt: принимает (Где камера, Куда смотрит, Где верх)
+    // Сдвигаем цель взгляда на -3.5 по Z изначально, чтобы куб оказался перед нами
+    view.lookAt(cameraPos + QVector3D(0.0f, 0.0f, 3.5f), cameraPos + QVector3D(0.0f, 0.0f, 3.5f) + front, QVector3D(0.0f, 1.0f, 0.0f));
+
+    // 3. МАТРИЦА ПРОЕКЦИИ
+    QMatrix4x4 projection;
+    projection.setToIdentity();
     float aspectRatio = static_cast<float>(width()) / std::max(1, height());
+    projection.perspective(45.0f, aspectRatio, 0.1f, 100.0f);
 
-    transform.perspective(45.0f, aspectRatio, 0.1f, 100.0f); // Настройка линзы камеры
-    transform.translate(0.0f, 0.0f, -3.5f); // Отодвигаем куб назад вглубь сцены
-    transform.rotate(renderAngle, 0.5f, 1.0f, 0.0f);
+    // Собираем конвейер
+    QMatrix4x4 transform = projection * view * model;
 
-    // Активируем шейдеры и передаем матрицу на видеокарту
     shaderProgram->bind();
     shaderProgram->setUniformValue("transform", transform);
 
-    // Рисуем геометрию
     glBindVertexArray(VAO);
     glDrawArrays(GL_TRIANGLES, 0, 36);
 }
@@ -147,3 +181,49 @@ void EngineViewport::gameLoop() {
     // 3. Принудительно заставляем Qt вызвать paintGL прямо сейчас, без откладывания в долгий ящик
     update();
 }
+
+void EngineViewport::setRotationSpeed(int speed) {
+    this->rotationSpeed = static_cast<float>(speed);
+}
+
+void EngineViewport::setFarPlane(double farValue) {
+    this->farPlane = static_cast<float>(farValue);
+}
+
+void EngineViewport::keyPressEvent(QKeyEvent* event) {
+    if (event->key() >= 0 && event->key() < 1024) {
+        keys[event->key()] = true; // Запоминаем, что клавиша зажата
+    }
+}
+
+void EngineViewport::keyReleaseEvent(QKeyEvent* event) {
+    if (event->key() >= 0 && event->key() < 1024) {
+        keys[event->key()] = false; // Клавиша отпущена
+    }
+}
+
+void EngineViewport::mouseMoveEvent(QMouseEvent* event) {
+    // Если это первый кадр — просто запоминаем позицию мыши без рывка камеры
+    if (firstMouse) {
+        lastMousePos = event->pos();
+        firstMouse = false;
+        return;
+    }
+
+    // Считаем разницу, на сколько пикселей сдвинулась мышь
+    float xOffset = event->pos().x() - lastMousePos.x();
+    float yOffset = lastMousePos.y() - event->pos().y(); // Переворачиваем Y, так как в окнах он идет сверху вниз
+    lastMousePos = event->pos();
+
+    float sensitivity = 0.1f; // Чувствительность мыши
+    xOffset *= sensitivity;
+    yOffset *= sensitivity;
+
+    cameraYaw   += xOffset;
+    cameraPitch += yOffset;
+
+    // Ограничиваем наклон вверх-вниз, чтобы не перевернуться вниз головой
+    if (cameraPitch > 89.0f)  cameraPitch = 89.0f;
+    if (cameraPitch < -89.0f) cameraPitch = -89.0f;
+}
+
