@@ -101,7 +101,7 @@ void EngineViewport::paintGL() {
 
     accumulator += smoothedFrameTime;
 
-    // 3. Фиксированный шаг для физики
+    // 3. Фиксированный шаг для физики glDrawArrays
     while (accumulator >= FIXED_DT) {
         prevAngle = currentAngle;
         updatePhysics(FIXED_DT);
@@ -128,27 +128,17 @@ void EngineViewport::renderScene(double alpha) {
     glClearColor(0.15f, 0.15f, 0.18f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    //glDisable(GL_CULL_FACE);
-
     // Плавный угол рендера с учетом интерполяции
     float renderAngle = prevAngle * (1.0f - alpha) + currentAngle * alpha;
 
-    // Создаем матрицу трансформации (поворот вокруг оси Z)
-    QMatrix4x4 model;
-    model.setToIdentity();
-    model.translate(0.0f, 0.0f, -3.5f); // Отодвигаем чуть дальше (на -3), чтобы он точно влез в камеру
-    model.rotate(renderAngle, 0.5f, 1.0f, 0.0f); // Вращаем вокруг вертикальной оси Y (в 3D!)
-
-    QMatrix4x4 view; // матрица взгляда
-    view.setToIdentity();
-
-    QMatrix4x4 projection; // матрица проекции (оптика и перспектива, нпр дальность объекта)
-    projection.setToIdentity();
+    QMatrix4x4 transform;
+    transform.setToIdentity();
 
     float aspectRatio = static_cast<float>(width()) / std::max(1, height());
-    projection.perspective(45.0f, aspectRatio, 0.1f, 100.0f);
 
-    QMatrix4x4 transform = projection * view * model;
+    transform.perspective(45.0f, aspectRatio, 0.1f, 100.0f); // Настройка линзы камеры
+    transform.translate(0.0f, 0.0f, -3.5f); // Отодвигаем куб назад вглубь сцены
+    transform.rotate(renderAngle, 0.5f, 1.0f, 0.0f);
 
     // Активируем шейдеры и передаем матрицу на видеокарту
     shaderProgram->bind();
@@ -156,5 +146,5 @@ void EngineViewport::renderScene(double alpha) {
 
     // Рисуем геометрию
     glBindVertexArray(VAO);
-    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glDrawArrays(GL_TRIANGLES, 0, 36);
 }
