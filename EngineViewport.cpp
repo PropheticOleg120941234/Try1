@@ -112,17 +112,22 @@ void EngineViewport::renderScene(double alpha) {
     glClearColor(0.15f, 0.15f, 0.18f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+    glDisable(GL_CULL_FACE);
+
     // Плавный угол рендера с учетом интерполяции
     float renderAngle = prevAngle * (1.0f - alpha) + currentAngle * alpha;
 
     // Создаем матрицу трансформации (поворот вокруг оси Z)
     QMatrix4x4 model;
-    model.translate(0.0f, 0.0f, -2.5f); // Отодвигаем объект вглубь экрана на 2.5 единицы
-    model.rotate(renderAngle, 0.0f, 0.0f, 1.0f); // Вращаем вокруг вертикальной оси Y (в 3D!)
+    model.setToIdentity();
+    model.translate(0.0f, 0.0f, -1.5f); // Отодвигаем чуть дальше (на -3), чтобы он точно влез в камеру
+    model.rotate(renderAngle, 0.0f, 1.0f, 0.0f); // Вращаем вокруг вертикальной оси Y (в 3D!)
 
     QMatrix4x4 view; // матрица взгляда
+    view.setToIdentity();
 
     QMatrix4x4 projection; // матрица проекции (оптика и перспектива, нпр дальность объекта)
+    projection.setToIdentity();
 
     float aspectRatio = static_cast<float>(width()) / std::max(1, height());
     projection.perspective(45.0f, aspectRatio, 0.1f, 100.0f);
