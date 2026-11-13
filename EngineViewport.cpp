@@ -45,9 +45,23 @@ void EngineViewport::initializeGL() {
 
     // 2. Координаты вершин треугольника (X, Y, Z) в пределах от -1.0 до 1.0
     float vertices[] = {
-        -0.5f, -0.5f, 0.0f, // Левая нижняя
-        0.5f, -0.5f, 0.0f, // Правая нижняя
-        0.0f,  0.5f, 0.0f  // Верхняя
+        -0.5f, -0.5f, -0.5f,  0.5f, -0.5f, -0.5f,  0.5f,  0.5f, -0.5f,
+        0.5f,  0.5f, -0.5f, -0.5f,  0.5f, -0.5f, -0.5f, -0.5f, -0.5f,
+
+        -0.5f, -0.5f,  0.5f,  0.5f, -0.5f,  0.5f,  0.5f,  0.5f,  0.5f,
+        0.5f,  0.5f,  0.5f, -0.5f,  0.5f,  0.5f, -0.5f, -0.5f,  0.5f,
+
+        -0.5f,  0.5f,  0.5f, -0.5f,  0.5f, -0.5f, -0.5f, -0.5f, -0.5f,
+        -0.5f, -0.5f, -0.5f, -0.5f, -0.5f,  0.5f, -0.5f,  0.5f,  0.5f,
+
+        0.5f,  0.5f,  0.5f,  0.5f,  0.5f, -0.5f,  0.5f, -0.5f, -0.5f,
+        0.5f, -0.5f, -0.5f,  0.5f, -0.5f,  0.5f,  0.5f,  0.5f,  0.5f,
+
+        -0.5f, -0.5f, -0.5f,  0.5f, -0.5f, -0.5f,  0.5f, -0.5f,  0.5f,
+        0.5f, -0.5f,  0.5f, -0.5f, -0.5f,  0.5f, -0.5f, -0.5f, -0.5f,
+
+        -0.5f,  0.5f, -0.5f,  0.5f,  0.5f, -0.5f,  0.5f,  0.5f,  0.5f,
+        0.5f,  0.5f,  0.5f, -0.5f,  0.5f,  0.5f, -0.5f,  0.5f, -0.5f
     };
 
     // 3. Выделяем память на видеокарте и настраиваем "паспорт" VAO
@@ -62,6 +76,8 @@ void EngineViewport::initializeGL() {
     // Объясняем видеокарте структуру байт: 0-й атрибут, 3 float на вершину
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
+
+    timer.restart();
 }
 
 void EngineViewport::resizeGL(int w, int h) {
@@ -93,8 +109,8 @@ void EngineViewport::paintGL() {
     }
 
     // 4. Отрисовка с правильным коэффициентом сглаживания
-    double alpha = accumulator / FIXED_DT;
-    renderScene(alpha);
+    //double alpha = accumulator / FIXED_DT;
+    renderScene(accumulator / FIXED_DT);
 
     update(); // Запрашиваем перерисовку
 }
@@ -112,7 +128,7 @@ void EngineViewport::renderScene(double alpha) {
     glClearColor(0.15f, 0.15f, 0.18f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    glDisable(GL_CULL_FACE);
+    //glDisable(GL_CULL_FACE);
 
     // Плавный угол рендера с учетом интерполяции
     float renderAngle = prevAngle * (1.0f - alpha) + currentAngle * alpha;
@@ -120,8 +136,8 @@ void EngineViewport::renderScene(double alpha) {
     // Создаем матрицу трансформации (поворот вокруг оси Z)
     QMatrix4x4 model;
     model.setToIdentity();
-    model.translate(0.0f, 0.0f, -1.5f); // Отодвигаем чуть дальше (на -3), чтобы он точно влез в камеру
-    model.rotate(renderAngle, 0.0f, 1.0f, 0.0f); // Вращаем вокруг вертикальной оси Y (в 3D!)
+    model.translate(0.0f, 0.0f, -3.5f); // Отодвигаем чуть дальше (на -3), чтобы он точно влез в камеру
+    model.rotate(renderAngle, 0.5f, 1.0f, 0.0f); // Вращаем вокруг вертикальной оси Y (в 3D!)
 
     QMatrix4x4 view; // матрица взгляда
     view.setToIdentity();
@@ -136,7 +152,7 @@ void EngineViewport::renderScene(double alpha) {
 
     // Активируем шейдеры и передаем матрицу на видеокарту
     shaderProgram->bind();
-    shaderProgram->setUniformValue("transform", model);
+    shaderProgram->setUniformValue("transform", transform);
 
     // Рисуем геометрию
     glBindVertexArray(VAO);
