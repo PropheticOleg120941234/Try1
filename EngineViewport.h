@@ -7,6 +7,9 @@
 #include <QElapsedTimer>
 #include <QTimer>
 
+#include <QKeyEvent>
+#include <QMouseEvent>
+
 class EngineViewport : public QOpenGLWidget, protected QOpenGLFunctions_4_1_Core {
     Q_OBJECT
 
@@ -22,6 +25,10 @@ protected:
 public slots:
     // Эти функции Qt будет вызывать автоматически, когда мы будем двигать UI элементы
     void keyPressEvent(QKeyEvent* event) override;
+    void keyReleaseEvent(QKeyEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
+
     void setRotationSpeed(int speed);
     void setFarPlane(double farValue);
 
@@ -34,6 +41,8 @@ private:
 
     float rotationSpeed = 45.0f; // Начальная скорость (градусов в секунду)
     float farPlane = 100.0f;
+
+    QPoint CenterPoint() const;
 
     // Переменные для фиксированного игрового цикла
     QTimer* frameTimer = nullptr; // Таймер, который будет пинать игровой цикл
@@ -58,7 +67,8 @@ private:
 
     // Для расчета движения мыши
     QPoint lastMousePos;
-    bool firstMouse = true;
+    //bool firstMouse = true;
+    bool cursor_captured = false;
 };
 
 #endif // ENGINEVIEWPORT_H

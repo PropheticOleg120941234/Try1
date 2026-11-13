@@ -1,6 +1,9 @@
 #include "EngineViewport.h"
 #include <QMatrix4x4>
 #include <algorithm>
+#include <QtMath>
+#include <QCursor>
+#include <QApplication>
 
 // Исходный код вершинного шейдера (задает координаты)
 const char* vertexShaderSource = R"(
@@ -191,8 +194,18 @@ void EngineViewport::setFarPlane(double farValue) {
 }
 
 void EngineViewport::keyPressEvent(QKeyEvent* event) {
-    if (event->key() >= 0 && event->key() < 1024) {
-        keys[event->key()] = true; // Запоминаем, что клавиша зажата
+    if (cursor_captured) {
+        if (event->key() == Qt::Key_Escape) {
+            this->releaseMouse();
+            unsetCursor(); // Возвращаем обычную стрелочку мыши
+            cursor_captured = false;
+            //firstMouse = true; // Сбрасываем флаг, чтобы не было рывка при следующем захвате
+            return;
+        }
+
+        if (event->key() >= 0 && event->key() < 1024) {
+            keys[event->key()] = true; // Запоминаем, что клавиша зажата
+        }
     }
 }
 
@@ -202,28 +215,68 @@ void EngineViewport::keyReleaseEvent(QKeyEvent* event) {
     }
 }
 
-void EngineViewport::mouseMoveEvent(QMouseEvent* event) {
-    // Если это первый кадр — просто запоминаем позицию мыши без рывка камеры
-    if (firstMouse) {
-        lastMousePos = event->pos();
-        firstMouse = false;
-        return;
-    }
+QPoint EngineViewport::CenterPoint() const {
+    int centerX = width() / 2;
+    int centerY = height() / 2;
 
-    // Считаем разницу, на сколько пикселей сдвинулась мышь
-    float xOffset = event->pos().x() - lastMousePos.x();
-    float yOffset = lastMousePos.y() - event->pos().y(); // Переворачиваем Y, так как в окнах он идет сверху вниз
-    lastMousePos = event->pos();
+    // 1. Переводим локальный центр окна в глобальные координаты экрана
+    QPoint localCenter(centerX, centerY);
+    QPoint globalCenter = mapToGlobal(localCenter);
 
-    float sensitivity = 0.1f; // Чувствительность мыши
-    xOffset *= sensitivity;
-    yOffset *= sensitivity;
+    // 2. КРИТИЧЕСКИЙ КОРРЕКТИРОВЩИК ДЛЯ WINDOWS:
+    // Умножаем координаты на коэффициент масштабирования вашего монитора (например, 1.25)
+    double dpr = devicePixelRatioF();
+    QPoint physicalCenter(static_cast<int>(globalCenter.x() * dpr),
+                          static_cast<int>(globalCenter.y() * dpr));
 
-    cameraYaw   += xOffset;
-    cameraPitch += yOffset;
-
-    // Ограничиваем наклон вверх-вниз, чтобы не перевернуться вниз головой
-    if (cameraPitch > 89.0f)  cameraPitch = 89.0f;
-    if (cameraPitch < -89.0f) cameraPitch = -89.0f;
+    // 3. Телепортируем мышь СТРОГО в физический центр матрицы
+    return physicalCenter;
 }
 
+void EngineViewport::mouseMoveEvent(QMouseEvent* event) {
+    //[[maybe_unused]] bool setting_cursor_pos = false;
+
+    if (cursor_captured /*&& !setting_cursor_pos*/) {
+        // Если это первый кадр — просто запоминаем позицию мыши без рывка камеры
+        /*if (firstMouse) {
+            lastMousePos = event->pos();
+            firstMouse = false;
+            return;
+        }*/
+        // Считаем разницу, на сколько пикселей сдвинулась мышь
+        float xOffset = event->pos().x() - lastMousePos.x();
+        float yOffset = lastMousePos.y() - event->pos().y(); // Переворачиваем Y, так как в окнах он идет сверху вниз
+        lastMousePos = event->pos();
+
+        float sensitivity = 0.1f; // Чувствительность мыши
+        xOffset *= sensitivity;
+        yOffset *= sensitivity;
+
+        cameraYaw   += xOffset;
+        cameraPitch += yOffset;
+
+        // Ограничиваем наклон вверх-вниз, чтобы не перевернуться вниз головой
+        if (cameraPitch > 89.0f)  cameraPitch = 89.0f;
+        if (cameraPitch < -89.0f) cameraPitch = -89.0f;
+
+        //setting_cursor_pos = true;
+        //QCursor::setPos(CenterPoint());
+        //setting_cursor_pos = false;
+    }
+}
+
+void EngineViewport::mousePressEvent(QMouseEvent* event) {
+    if (event->button() == Qt::LeftButton && !cursor_captured) {
+        cursor_captured = true;
+        // Скрываем курсор и привязываем его к нашему 3D-окну
+        setCursor(Qt::BlankCursor);
+
+        this->grabMouse();
+
+        // Центрируем курсор в нашем окне при первом клике
+        QCursor::setPos(CenterPoint());
+
+        lastMousePos = CenterPoint();
+        //firstMouse = false;
+    }
+}
